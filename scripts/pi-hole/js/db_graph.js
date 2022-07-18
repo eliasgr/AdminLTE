@@ -7,13 +7,19 @@
 
 /* global utils:false, Chart:false, moment:false */
 
-var start__ = moment().subtract(6, "days");
-var from = moment(start__).utc().valueOf() / 1000;
+var start__ = moment().subtract(7, "days");
+var from = Math.round(moment(start__).utc().valueOf() / 1000);
 var end__ = moment();
-var until = moment(end__).utc().valueOf() / 1000;
+var until = Math.round(moment(end__).utc().valueOf() / 1000);
 var interval = 0;
 
 var dateformat = "MMMM Do YYYY, HH:mm";
+
+// get the database min timestamp
+var mintimestamp;
+$.getJSON("api_db.php?getMinTimestamp", function (ts) {
+  mintimestamp = ts.mintimestamp * 1000 || 0; // return the timestamp in milliseconds or zero (in case of NaN)
+});
 
 $(function () {
   $("#querytime").daterangepicker(
@@ -28,25 +34,25 @@ $(function () {
         Today: [moment().startOf("day"), moment()],
         Yesterday: [
           moment().subtract(1, "days").startOf("day"),
-          moment().subtract(1, "days").endOf("day")
+          moment().subtract(1, "days").endOf("day"),
         ],
-        "Last 7 Days": [moment().subtract(6, "days"), moment()],
-        "Last 30 Days": [moment().subtract(29, "days"), moment()],
+        "Last 7 Days": [moment().subtract(7, "days"), moment()],
+        "Last 30 Days": [moment().subtract(30, "days"), moment()],
         "This Month": [moment().startOf("month"), moment()],
         "Last Month": [
           moment().subtract(1, "month").startOf("month"),
-          moment().subtract(1, "month").endOf("month")
+          moment().subtract(1, "month").endOf("month"),
         ],
         "This Year": [moment().startOf("year"), moment()],
-        "All Time": [moment(0), moment()]
+        "All Time": [moment(mintimestamp), moment()],
       },
       opens: "center",
       showDropdowns: true,
-      autoUpdateInput: false
+      autoUpdateInput: false,
     },
     function (startt, endt) {
-      from = moment(startt).utc().valueOf() / 1000;
-      until = moment(endt).utc().valueOf() / 1000;
+      from = Math.round(moment(startt).utc().valueOf() / 1000);
+      until = Math.round(moment(endt).utc().valueOf() / 1000);
     }
   );
 });
@@ -57,31 +63,81 @@ function compareNumbers(a, b) {
   return a - b;
 }
 
+function computeInterval(from, until) {
+  // Compute interval to obtain about 200 values
+  var num = 200;
+  // humanly understandable intervals (in seconds)
+  var intervals = [
+    10,
+    20,
+    30,
+    60,
+    120,
+    180,
+    300,
+    600,
+    900,
+    1200,
+    1800,
+    3600,
+    3600 * 2,
+    3600 * 3,
+    3600 * 4,
+    3600 * 6,
+    3600 * 8,
+    3600 * 12,
+    3600 * 24,
+    3600 * 24 * 7,
+    3600 * 24 * 30,
+  ];
+
+  var duration = until - from;
+  if (duration / (num * intervals[0]) < 1) {
+    return intervals[0];
+  }
+
+  var preverr = Number.MAX_VALUE,
+    err;
+  for (var i = 0; i < intervals.length; i++) {
+    err = Math.abs(1 - duration / (num * intervals[i]));
+    // pick the interval with least deviation
+    // from selected duration
+    if (preverr < err) {
+      return intervals[i - 1];
+    }
+
+    preverr = err;
+  }
+
+  return intervals[intervals.length - 1];
+}
+
 function updateQueriesOverTime() {
   var timeoutWarning = $("#timeoutWarning");
 
   $("#queries-over-time .overlay").show();
   timeoutWarning.show();
 
-  // Compute interval to obtain about 200 values
-  var num = 200;
-  interval = (until - from) / num;
+  interval = computeInterval(from, until);
   // Default displaying axis scaling
   timeLineChart.options.scales.xAxes[0].time.unit = "hour";
 
-  if (num * interval >= 6 * 29 * 24 * 60 * 60) {
-    // If the requested data is more than 3 months, set ticks interval to quarterly
+  var duration = until - from;
+  // Xaxis scaling based on selected daterange
+  if (duration > 4 * 365 * 24 * 60 * 60) {
+    // If the requested data is more than 4 years, set ticks interval to year
+    timeLineChart.options.scales.xAxes[0].time.unit = "year";
+  } else if (duration >= 366 * 24 * 60 * 60) {
+    // If the requested data is more than 1 year, set ticks interval to quarter
     timeLineChart.options.scales.xAxes[0].time.unit = "quarter";
-  } else if (num * interval >= 3 * 29 * 24 * 60 * 60) {
+  } else if (duration >= 92 * 24 * 60 * 60) {
     // If the requested data is more than 3 months, set ticks interval to months
     timeLineChart.options.scales.xAxes[0].time.unit = "month";
-  }
-
-  if (num * interval >= 29 * 24 * 60 * 60) {
-    // If the requested data is more than 1 month, set ticks interval to weeks
+  } else if (duration >= 31 * 24 * 60 * 60) {
+    // If the requested data is 1 month or more, set ticks interval to weeks
     timeLineChart.options.scales.xAxes[0].time.unit = "week";
-  } else if (num * interval >= 6 * 24 * 60 * 60) {
-    // If the requested data is more than 1 week, set ticks interval to days
+  } else if (duration > 3 * 24 * 60 * 60) {
+    // If the requested data is more than 3 days (72 hours), set ticks interval to days
     timeLineChart.options.scales.xAxes[0].time.unit = "day";
   }
 
@@ -106,10 +162,11 @@ function updateQueriesOverTime() {
       }
 
       for (hour in data.ads_over_time[0]) {
-        if (Object.prototype.hasOwnProperty.call(data.ads_over_time[0], hour)) {
-          if (dates.indexOf(parseInt(data.ads_over_time[0][hour], 10)) === -1) {
-            dates.push(parseInt(data.ads_over_time[0][hour], 10));
-          }
+        if (
+          Object.prototype.hasOwnProperty.call(data.ads_over_time[0], hour) &&
+          dates.indexOf(parseInt(data.ads_over_time[0][hour], 10)) === -1
+        ) {
+          dates.push(parseInt(data.ads_over_time[0][hour], 10));
         }
       }
 
@@ -149,8 +206,11 @@ function updateQueriesOverTime() {
 
 $(function () {
   var ctx = document.getElementById("queryOverTimeChart").getContext("2d");
-  var blockedColor = "#999";
-  var permittedColor = "#00a65a";
+  var blockedColor = $(".queries-blocked").css("background-color");
+  var permittedColor = $(".queries-permitted").css("background-color");
+  var gridColor = $(".graphs-grid").css("background-color");
+  var ticksColor = $(".graphs-ticks").css("color");
+
   timeLineChart = new Chart(ctx, {
     type: utils.getGraphType(),
     data: {
@@ -162,10 +222,10 @@ $(function () {
           backgroundColor: blockedColor,
           borderColor: blockedColor,
           pointBorderColor: blockedColor,
-          pointRadius: 1,
+          pointRadius: 0,
           pointHoverRadius: 5,
           data: [],
-          pointHitRadius: 5
+          pointHitRadius: 5,
         },
         {
           label: "Permitted DNS Queries",
@@ -173,12 +233,12 @@ $(function () {
           backgroundColor: permittedColor,
           borderColor: permittedColor,
           pointBorderColor: permittedColor,
-          pointRadius: 1,
+          pointRadius: 0,
           pointHoverRadius: 5,
           data: [],
-          pointHitRadius: 5
-        }
-      ]
+          pointHitRadius: 5,
+        },
+      ],
     },
     options: {
       tooltips: {
@@ -266,11 +326,11 @@ $(function () {
             }
 
             return data.datasets[tooltipItems.datasetIndex].label + ": " + tooltipItems.yLabel;
-          }
-        }
+          },
+        },
       },
       legend: {
-        display: false
+        display: false,
       },
       scales: {
         xAxes: [
@@ -285,23 +345,40 @@ $(function () {
                 day: "MMM DD",
                 week: "MMM DD",
                 month: "MMM",
-                quarter: "MMM",
-                year: "YYYY MMM"
-              }
-            }
-          }
+                quarter: "YYYY MMM",
+                year: "YYYY",
+              },
+            },
+            gridLines: {
+              color: gridColor,
+              zeroLineColor: gridColor,
+            },
+            ticks: {
+              fontColor: ticksColor,
+            },
+          },
         ],
         yAxes: [
           {
             stacked: true,
             ticks: {
-              beginAtZero: true
-            }
-          }
-        ]
+              beginAtZero: true,
+              fontColor: ticksColor,
+            },
+            gridLines: {
+              color: gridColor,
+            },
+          },
+        ],
       },
-      maintainAspectRatio: false
-    }
+      elements: {
+        line: {
+          borderWidth: 0,
+          spanGaps: false,
+        },
+      },
+      maintainAspectRatio: false,
+    },
   });
 });
 

@@ -1,12 +1,13 @@
-<?php /*
+<?php
+/*
 *    Pi-hole: A black hole for Internet advertisements
 *    (c) 2017 Pi-hole, LLC (https://pi-hole.net)
 *    Network-wide ad blocking via your own hardware.
 *
 *    This file is copyright under the latest version of the EUPL.
 *    Please see LICENSE file for your rights under this license. */
-    require "scripts/pi-hole/php/header.php";
 
+require "scripts/pi-hole/php/header.php";
 ?>
 
 <!-- Title -->
@@ -40,7 +41,7 @@
             </div>
             <div class="box-footer clearfix">
               <strong>Note:</strong>
-              <p>The target of a <code>CNAME</code> must be a domain that the Pi-hole already has in its cache or is authoritative for. This is an universal limitation of <code>CNAME</code> records.</p>
+              <p>The target of a <code>CNAME</code> must be a domain that the Pi-hole already has in its cache or is authoritative for. This is a universal limitation of <code>CNAME</code> records.</p>
               <p>The reason for this is that Pi-hole will not send additional queries upstream when serving <code>CNAME</code> replies. As consequence, if you set a target that isn't already known, the reply to the client may be incomplete. Pi-hole just returns the information it knows at the time of the query. This results in certain limitations for <code>CNAME</code> targets,
                 for instance, only <i>active</i> DHCP leases work as targets - mere DHCP <i>leases</i> aren't sufficient as they aren't (yet) valid DNS records.</p>
                 <p>Additionally, you can't <code>CNAME</code> external domains (<code>bing.com</code> to <code>google.com</code>) successfully as this could result in invalid SSL certificate errors when the target server does not serve content for the requested domain.</p>
@@ -50,23 +51,6 @@
     </div>
 </div>
 
-<!-- Alerts -->
-<div id="alInfo" class="alert alert-info alert-dismissible fade in" role="alert" hidden>
-    <button type="button" class="close" data-hide="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-    Updating CNAME records...
-</div>
-<div id="alSuccess" class="alert alert-success alert-dismissible fade in" role="alert" hidden>
-    <button type="button" class="close" data-hide="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-    Success! The list will refresh.
-</div>
-<div id="alFailure" class="alert alert-danger alert-dismissible fade in" role="alert" hidden>
-    <button type="button" class="close" data-hide="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-    Failure! Something went wrong, see output below:<br/><br/><pre><span id="err"></span></pre>
-</div>
-<div id="alWarning" class="alert alert-warning alert-dismissible fade in" role="alert" hidden>
-    <button type="button" class="close" data-hide="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-    At least one domain was already present, see output below:<br/><br/><pre><span id="warn"></span></pre>
-</div>
 <div class="row">
     <div class="col-md-12">
         <div class="box" id="recent-queries">
@@ -94,7 +78,6 @@
     </div>
 </div>
 
-<script src="scripts/pi-hole/js/utils.js?v=<?=$cacheVer?>"></script>
 <script src="scripts/pi-hole/js/customcname.js?v=<?=$cacheVer?>"></script>
 
 <?php

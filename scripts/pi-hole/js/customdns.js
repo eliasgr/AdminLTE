@@ -10,35 +10,6 @@
 var table;
 var token = $("#token").text();
 
-function showAlert(type, message) {
-  var alertElement = null;
-  var messageElement = null;
-
-  switch (type) {
-    case "info":
-      alertElement = $("#alInfo");
-      break;
-    case "success":
-      alertElement = $("#alSuccess");
-      break;
-    case "warning":
-      alertElement = $("#alWarning");
-      messageElement = $("#warn");
-      break;
-    case "error":
-      alertElement = $("#alFailure");
-      messageElement = $("#err");
-      break;
-    default:
-      return;
-  }
-
-  if (messageElement !== null) messageElement.html(message);
-
-  alertElement.fadeIn(200);
-  alertElement.delay(8000).fadeOut(2000);
-}
-
 $(function () {
   $("#btnAdd").on("click", addCustomDNS);
 
@@ -46,7 +17,7 @@ $(function () {
     ajax: {
       url: "scripts/pi-hole/php/customdns.php",
       data: { action: "get", token: token },
-      type: "POST"
+      type: "POST",
     },
     columns: [{}, { type: "ip-address" }, { orderable: false, searchable: false }],
     columnDefs: [
@@ -62,15 +33,20 @@ $(function () {
             '<span class="far fa-trash-alt"></span>' +
             "</button>"
           );
-        }
-      }
+        },
+      },
+      {
+        targets: "_all",
+        render: $.fn.dataTable.render.text(),
+      },
     ],
     lengthMenu: [
       [10, 25, 50, 100, -1],
-      [10, 25, 50, 100, "All"]
+      [10, 25, 50, 100, "All"],
     ],
     order: [[0, "asc"]],
     stateSave: true,
+    stateDuration: 0,
     stateSaveCallback: function (settings, data) {
       utils.stateSaveCallback("LocalDNSTable", data);
     },
@@ -79,7 +55,7 @@ $(function () {
     },
     drawCallback: function () {
       $(".deleteCustomDNS").on("click", deleteCustomDNS);
-    }
+    },
   });
   // Disable autocorrect in the search box
   var input = document.querySelector("input[type=search]");
@@ -93,21 +69,31 @@ function addCustomDNS() {
   var ip = utils.escapeHtml($("#ip").val());
   var domain = utils.escapeHtml($("#domain").val());
 
-  showAlert("info");
+  utils.disableAll();
+  utils.showAlert("info", "", "Adding custom DNS entry...", "");
+
   $.ajax({
     url: "scripts/pi-hole/php/customdns.php",
     method: "post",
     dataType: "json",
     data: { action: "add", ip: ip, domain: domain, token: token },
     success: function (response) {
+      utils.enableAll();
       if (response.success) {
-        showAlert("success");
+        utils.showAlert("success", "far fa-check-circle", "Custom DNS added", domain + ": " + ip);
+
+        // Clean up field values and reload table data
+        $("#domain").val("");
+        $("#ip").val("");
         table.ajax.reload();
-      } else showAlert("error", response.message);
+      } else {
+        utils.showAlert("error", "fas fa-times", "Failure! Something went wrong", response.message);
+      }
     },
     error: function () {
-      showAlert("error", "Error while adding this custom DNS entry");
-    }
+      utils.enableAll();
+      utils.showAlert("error", "fas fa-times", "Error while adding custom DNS entry", "");
+    },
   });
 }
 
@@ -115,21 +101,27 @@ function deleteCustomDNS() {
   var ip = $(this).attr("data-ip");
   var domain = $(this).attr("data-domain");
 
-  showAlert("info");
+  utils.disableAll();
+  utils.showAlert("info", "", "Deleting custom DNS entry...", "");
+
   $.ajax({
     url: "scripts/pi-hole/php/customdns.php",
     method: "post",
     dataType: "json",
     data: { action: "delete", domain: domain, ip: ip, token: token },
     success: function (response) {
+      utils.enableAll();
       if (response.success) {
-        showAlert("success");
+        utils.showAlert("success", "far fa-check-circle", "Custom DNS deleted", domain + ": " + ip);
         table.ajax.reload();
-      } else showAlert("error", response.message);
+      } else {
+        utils.showAlert("error", "fas fa-times", "Failure! Something went wrong", response.message);
+      }
     },
     error: function (jqXHR, exception) {
-      showAlert("error", "Error while deleting this custom DNS entry");
+      utils.enableAll();
+      utils.showAlert("error", "fas fa-times", "Error while deleting custom DNS entry", "");
       console.log(exception); // eslint-disable-line no-console
-    }
+    },
   });
 }

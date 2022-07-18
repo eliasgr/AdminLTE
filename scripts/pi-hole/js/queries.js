@@ -21,7 +21,10 @@ var replyTypes = [
   "SERVFAIL",
   "REFUSED",
   "NOTIMP",
-  "upstream error"
+  "upstream error",
+  "DNSSEC",
+  "NONE",
+  "BLOB",
 ];
 var colTypes = ["time", "query type", "domain", "client", "status", "reply type"];
 
@@ -29,9 +32,9 @@ function handleAjaxError(xhr, textStatus) {
   if (textStatus === "timeout") {
     alert("The server took too long to send the data.");
   } else if (xhr.responseText.indexOf("Connection refused") !== -1) {
-    alert("An error occured while loading the data: Connection refused. Is FTL running?");
+    alert("An error occurred while loading the data: Connection refused. Is FTL running?");
   } else {
-    alert("An unknown error occured while loading the data.\n" + xhr.responseText);
+    alert("An unknown error occurred while loading the data.\n" + xhr.responseText);
   }
 
   $("#all-queries_processing").hide();
@@ -74,63 +77,70 @@ $(function () {
 
   tableApi = $("#all-queries").DataTable({
     rowCallback: function (row, data) {
+      var replyid = parseInt(data[5], 10);
       // DNSSEC status
       var dnssecStatus;
+      var ede = data[11] ? data[11] : "";
       switch (data[6]) {
         case "1":
-          dnssecStatus = '<br><span class="text-green">SECURE</span>';
+          dnssecStatus = '<br><span class="text-green">SECURE';
           break;
         case "2":
-          dnssecStatus = '<br><span class="text-orange">INSECURE</span>';
+          dnssecStatus = '<br><span class="text-orange">INSECURE';
           break;
         case "3":
-          dnssecStatus = '<br><span class="text-red">BOGUS</span>';
+          dnssecStatus = '<br><span class="text-red">BOGUS';
           break;
         case "4":
-          dnssecStatus = '<br><span class="text-red">ABANDONED</span>';
+          dnssecStatus = '<br><span class="text-red">ABANDONED';
           break;
         case "5":
-          dnssecStatus = '<br><span class="text-orange">UNKNOWN</span>';
+          dnssecStatus = '<br><span class="text-orange">UNKNOWN';
           break;
         default:
           // No DNSSEC
           dnssecStatus = "";
       }
 
+      if (dnssecStatus.length > 0) {
+        if (ede.length > 0) dnssecStatus += " (" + ede + ")";
+        else if (replyid === 7) dnssecStatus += " (refused upstream)";
+        dnssecStatus += "</span>";
+      }
+
       // Query status
       var fieldtext,
-        buttontext,
-        colorClass = false,
+        buttontext = "",
+        blocked = false,
         isCNAME = false,
         regexLink = false;
 
       switch (data[4]) {
         case "1":
-          colorClass = "text-red";
-          fieldtext = "Blocked (gravity)";
+          fieldtext = "<span class='text-red'>Blocked (gravity)</span>";
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-green"><i class="fas fa-check"></i> Whitelist</button>';
+          blocked = true;
           break;
         case "2":
-          colorClass = "text-green";
           fieldtext =
-            "OK <br class='hidden-lg'>(forwarded to " +
-            (data.length > 10 && data[10] !== "N/A" ? data[10] : "") +
-            ")" +
-            dnssecStatus;
+            replyid === 0
+              ? "<span class='text-green'>OK</span> (sent to <br class='hidden-lg'>"
+              : "<span class='text-green'>OK</span> (answered by <br class='hidden-lg'>";
+          fieldtext +=
+            (data.length > 10 && data[10] !== "N/A" ? data[10] : "") + ")" + dnssecStatus;
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-red"><i class="fa fa-ban"></i> Blacklist</button>';
           break;
         case "3":
-          colorClass = "text-green";
-          fieldtext = "OK <br class='hidden-lg'>(cached)" + dnssecStatus;
+          fieldtext =
+            "<span class='text-green'>OK</span> <br class='hidden-lg'>(cache)" + dnssecStatus;
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-red"><i class="fa fa-ban"></i> Blacklist</button>';
           break;
         case "4":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(regex blacklist)";
-
+          fieldtext = "<span class='text-red'>Blocked <br class='hidden-lg'>(regex blacklist)";
+          blocked = true;
           if (data.length > 9 && data[9] > 0) {
             regexLink = true;
           }
@@ -139,37 +149,40 @@ $(function () {
             '<button type="button" class="btn btn-default btn-sm text-green"><i class="fas fa-check"></i> Whitelist</button>';
           break;
         case "5":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(exact blacklist)";
+          fieldtext = "<span class='text-red'>Blocked <br class='hidden-lg'>(exact blacklist)";
+          blocked = true;
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-green"><i class="fas fa-check"></i> Whitelist</button>';
           break;
         case "6":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(external, IP)";
+          fieldtext = "<span class='text-red'>Blocked <br class='hidden-lg'>(external, IP)";
+          blocked = true;
           buttontext = "";
           break;
         case "7":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(external, NULL)";
+          fieldtext =
+            "<span class='text-red'>Blocked <br class='hidden-lg'>(external, NULL)</span>";
+          blocked = true;
           buttontext = "";
           break;
         case "8":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(external, NXRA)";
+          fieldtext =
+            "<span class='text-red'>Blocked <br class='hidden-lg'>(external, NXRA)</span>";
+          blocked = true;
           buttontext = "";
           break;
         case "9":
-          colorClass = "text-red";
-          fieldtext = "Blocked (gravity, CNAME)";
+          fieldtext =
+            "<span class='text-red'>Blocked <br class='hidden-lg'>(gravity, CNAME)</span>";
+          blocked = true;
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-green"><i class="fas fa-check"></i> Whitelist</button>';
           isCNAME = true;
           break;
         case "10":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(regex blacklist, CNAME)";
-
+          fieldtext =
+            "<span class='text-red'>Blocked <br class='hidden-lg'>(regex blacklist, CNAME)</span>";
+          blocked = true;
           if (data.length > 9 && data[9] > 0) {
             regexLink = true;
           }
@@ -179,32 +192,51 @@ $(function () {
           isCNAME = true;
           break;
         case "11":
-          colorClass = "text-red";
-          fieldtext = "Blocked <br class='hidden-lg'>(exact blacklist, CNAME)";
+          fieldtext =
+            "<span class='text-red'>Blocked <br class='hidden-lg'>(exact blacklist, CNAME)</span>";
+          blocked = true;
           buttontext =
             '<button type="button" class="btn btn-default btn-sm text-green"><i class="fas fa-check"></i> Whitelist</button>';
           isCNAME = true;
           break;
         case "12":
-          colorClass = "text-green";
-          fieldtext = "Retried";
-          buttontext = "";
+          fieldtext = "<span class='text-green'>Retried</span>";
           break;
         case "13":
-          colorClass = "text-green";
-          fieldtext = "Retried <br class='hidden-lg'>(ignored)";
-          buttontext = "";
+          fieldtext = "<span class='text-green'>Retried</span> <br class='hidden-lg'>(ignored)";
+          break;
+        case "14":
+          fieldtext =
+            "<span class='text-green'>OK</span> <br class='hidden-lg'>(already forwarded)" +
+            dnssecStatus;
+          buttontext =
+            '<button type="button" class="btn btn-default btn-sm text-red"><i class="fa fa-ban"></i> Blacklist</button>';
+          break;
+        case "15":
+          fieldtext =
+            "<span class='text-orange'>Blocked <br class='hidden-lg'>(database is busy)</span>";
+          blocked = true;
+          break;
+        case "16":
+          fieldtext =
+            "<span class='text-orange'>Blocked <br class='hidden-lg'>(special domain)</span>";
+          blocked = true;
           break;
         default:
-          colorClass = false;
           fieldtext = "Unknown (" + parseInt(data[4], 10) + ")";
-          buttontext = "";
       }
+
+      // Add EDE here if available and not included in dnssecStatus
+      if (ede.length > 0 && dnssecStatus.length === 0) fieldtext += " (" + ede + ")";
+
+      // Cannot block internal queries of this type
+      if ((data[1] === "DNSKEY" || data[1] === "DS") && data[3] === "pi.hole") buttontext = "";
 
       fieldtext += '<input type="hidden" name="id" value="' + parseInt(data[4], 10) + '">';
 
-      if (colorClass !== false) {
-        $(row).addClass(colorClass);
+      $(row).addClass(blocked === true ? "blocked-row" : "allowed-row");
+      if (localStorage && localStorage.getItem("colorfulQueryLog_chkbox") === "true") {
+        $(row).addClass(blocked === true ? "text-red" : "text-green");
       }
 
       $("td:eq(4)", row).html(fieldtext);
@@ -245,7 +277,6 @@ $(function () {
       }
 
       // Check for existence of sixth column and display only if not Pi-holed
-      var replyid = data[5];
       var replytext =
         replyid >= 0 && replyid < replyTypes.length ? replyTypes[replyid] : "? (" + replyid + ")";
 
@@ -253,7 +284,8 @@ $(function () {
 
       $("td:eq(5)", row).html(replytext);
 
-      if (data.length > 7) {
+      // Show response time only when reply is not N/A
+      if (data.length > 7 && replyid !== 0) {
         var content = $("td:eq(5)", row).html();
         $("td:eq(5)", row).html(content + " (" + (0.1 * data[7]).toFixed(1) + "ms)");
       }
@@ -267,16 +299,28 @@ $(function () {
       url: APIstring,
       error: handleAjaxError,
       dataSrc: function (data) {
-        var dataIndex = 0;
-        return data.data.map(function (x) {
-          x[0] = x[0] * 1e6 + dataIndex++;
-          var dnssec = x[5];
-          var reply = x[6];
-          x[5] = reply;
-          x[6] = dnssec;
-          return x;
-        });
-      }
+        if ("FTLnotrunning" in data) {
+          // if FTL is not running, return empyt array (empty table)
+          utils.showAlert(
+            "error",
+            "",
+            "Error while deleting DHCP lease for ",
+            "FTL is not running"
+          );
+          data = {};
+          return data;
+        } else {
+          var dataIndex = 0;
+          return data.data.map(function (x) {
+            x[0] = x[0] * 1e6 + dataIndex++;
+            var dnssec = x[5];
+            var reply = x[6];
+            x[5] = reply;
+            x[6] = dnssec;
+            return x;
+          });
+        }
+      },
     },
     autoWidth: false,
     processing: true,
@@ -292,20 +336,21 @@ $(function () {
           }
 
           return data;
-        }
+        },
       },
       { width: "4%" },
-      { width: "36%", render: $.fn.dataTable.render.text() },
-      { width: "8%", type: "ip-address", render: $.fn.dataTable.render.text() },
+      { width: "36%" },
+      { width: "8%", type: "ip-address" },
       { width: "14%", orderData: 4 },
       { width: "8%", orderData: 5 },
-      { width: "10%", orderData: 4 }
+      { width: "10%", orderData: 4 },
     ],
     lengthMenu: [
       [10, 25, 50, 100, -1],
-      [10, 25, 50, 100, "All"]
+      [10, 25, 50, 100, "All"],
     ],
     stateSave: true,
+    stateDuration: 0,
     stateSaveCallback: function (settings, data) {
       utils.stateSaveCallback("query_log_table", data);
     },
@@ -316,8 +361,12 @@ $(function () {
       {
         targets: -1,
         data: null,
-        defaultContent: ""
-      }
+        defaultContent: "",
+      },
+      {
+        targets: "_all",
+        render: $.fn.dataTable.render.text(),
+      },
     ],
     initComplete: function () {
       var api = this.api();
@@ -410,14 +459,14 @@ $(function () {
         input.attr("spellcheck", false);
         input.attr("placeholder", "Type / Domain / Client");
       }
-    }
+    },
   });
 
   resetColumnsFilters();
 
   $("#all-queries tbody").on("click", "button", function () {
     var data = tableApi.row($(this).parents("tr")).data();
-    if (data[4] === "2" || data[4] === "3") {
+    if (data[4] === "2" || data[4] === "3" || data[4] === "14") {
       utils.addFromQueryLog(data[2], "black");
     } else {
       utils.addFromQueryLog(data[2], "white");

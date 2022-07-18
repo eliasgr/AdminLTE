@@ -5,6 +5,7 @@
  *  This file is copyright under the latest version of the EUPL.
  *  Please see LICENSE file for your rights under this license. */
 
+/* global utils:false */
 //The following functions allow us to display time until pi-hole is enabled after disabling.
 //Works between all pages
 
@@ -30,7 +31,7 @@ function piholeChanged(action) {
       break;
 
     case "disabled":
-      status.html("<i class='fa fa-circle text-red'></i> Offline");
+      status.html("<i class='fa fa-circle text-red'></i> Blocking disabled");
       ena.show();
       dis.hide();
       break;
@@ -44,7 +45,13 @@ function countDown() {
   var ena = $("#enableLabel");
   var enaT = $("#enableTimer");
   var target = new Date(parseInt(enaT.html(), 10));
-  var seconds = Math.round((target.getTime() - new Date().getTime()) / 1000);
+  var seconds = Math.round((target.getTime() - Date.now()) / 1000);
+
+  //Stop and remove timer when user enabled early
+  if ($("#pihole-enable").is(":hidden")) {
+    ena.text("Enable");
+    return;
+  }
 
   if (seconds > 0) {
     setTimeout(countDown, 1000);
@@ -52,7 +59,9 @@ function countDown() {
   } else {
     ena.text("Enable");
     piholeChanged("enabled");
-    localStorage.removeItem("countDownTarget");
+    if (localStorage) {
+      localStorage.removeItem("countDownTarget");
+    }
   }
 }
 
@@ -81,7 +90,7 @@ function piholeChange(action, duration) {
           btnStatus.html("");
           piholeChanged("disabled");
           if (duration > 0) {
-            enaT.html(new Date().getTime() + duration * 1000);
+            enaT.html(Date.now() + duration * 1000);
             setTimeout(countDown, 100);
           }
         }
@@ -91,21 +100,6 @@ function piholeChange(action, duration) {
     default:
     // nothing
   }
-}
-
-function checkMessages() {
-  $.getJSON("api_db.php?status", function (data) {
-    if ("message_count" in data && data.message_count > 0) {
-      var title =
-        data.message_count > 1
-          ? "There are " + data.message_count + " warnings. Click for further details."
-          : "There is one warning. Click for further details.";
-
-      $("#pihole-diagnosis").prop("title", title);
-      $("#pihole-diagnosis-count").text(data.message_count);
-      $("#pihole-diagnosis").removeClass("hidden");
-    }
-  });
 }
 
 function testCookies() {
@@ -131,14 +125,18 @@ function initCheckboxRadioStyle() {
 
   function applyCheckboxRadioStyle(style) {
     boxsheet.attr("href", getCheckboxURL(style));
-    // Get all radio/checkboxes for theming, with the exception of the two radio buttons on the custom disable timer
-    var sel = $("input[type='radio'],input[type='checkbox']").not("#selSec").not("#selMin");
+    // Get all radio/checkboxes for theming, with the exception of the two radio buttons on the custom disable timer,
+    // as well as every element with an id that starts with "status_"
+    var sel = $("input[type='radio'],input[type='checkbox']")
+      .not("#selSec")
+      .not("#selMin")
+      .not("[id^=status_]");
     sel.parent().removeClass();
     sel.parent().addClass("icheck-" + style);
   }
 
   // Read from local storage, initialize if needed
-  var chkboxStyle = localStorage.getItem("theme_icheck");
+  var chkboxStyle = localStorage ? localStorage.getItem("theme_icheck") : null;
   if (chkboxStyle === null) {
     chkboxStyle = "primary";
   }
@@ -162,7 +160,10 @@ function initCheckboxRadioStyle() {
 
 function initCPUtemp() {
   function setCPUtemp(unit) {
-    localStorage.setItem("tempunit", tempunit);
+    if (localStorage) {
+      localStorage.setItem("tempunit", tempunit);
+    }
+
     var temperature = parseFloat($("#rawtemp").text());
     var displaytemp = $("#tempdisplay");
     if (!isNaN(temperature)) {
@@ -185,7 +186,7 @@ function initCPUtemp() {
   }
 
   // Read from local storage, initialize if needed
-  var tempunit = localStorage.getItem("tempunit");
+  var tempunit = localStorage ? localStorage.getItem("tempunit") : null;
   if (tempunit === null) {
     tempunit = "C";
   }
@@ -206,7 +207,7 @@ function initCPUtemp() {
 $(function () {
   var enaT = $("#enableTimer");
   var target = new Date(parseInt(enaT.html(), 10));
-  var seconds = Math.round((target.getTime() - new Date().getTime()) / 1000);
+  var seconds = Math.round((target.getTime() - Date.now()) / 1000);
   if (seconds > 0) {
     setTimeout(countDown, 100);
   }
@@ -220,9 +221,9 @@ $(function () {
   initCPUtemp();
 
   // Run check immediately after page loading ...
-  checkMessages();
+  utils.checkMessages();
   // ... and once again with five seconds delay
-  setTimeout(checkMessages, 5000);
+  setTimeout(utils.checkMessages, 5000);
 });
 
 // Handle Enable/Disable
@@ -281,17 +282,13 @@ if (sessionvalidity > 0) {
       seconds = "0" + seconds;
     }
 
-    if (totalseconds > 0) {
-      sessionTimerCounter.textContent = minutes + ":" + seconds;
-    } else {
-      sessionTimerCounter.textContent = "-- : --";
-    }
+    sessionTimerCounter.textContent = totalseconds > 0 ? minutes + ":" + seconds : "-- : --";
   }, 1000);
 } else {
   document.getElementById("sessiontimer").style.display = "none";
 }
 
-// Handle Strg + Enter button on Login page
+// Handle Ctrl + Enter button on Login page
 $(document).keypress(function (e) {
   if ((e.keyCode === 10 || e.keyCode === 13) && e.ctrlKey && $("#loginpw").is(":focus")) {
     $("#loginform").attr("action", "settings.php");

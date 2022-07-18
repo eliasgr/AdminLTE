@@ -9,6 +9,10 @@
     require_once('func.php');
 
     // Start a new PHP session (or continue an existing one)
+    // Prevents javascript XSS attacks aimed to steal the session ID
+    ini_set('session.cookie_httponly', 1);
+    // Prevent Session ID from being passed through URLs
+    ini_set('session.use_only_cookies', 1);
     session_start();
 
     // Read setupVars.conf file
@@ -39,14 +43,15 @@
     // Test if password is set
     if(strlen($pwhash) > 0)
     {
-        // Check for and authorize from persistent cookie 
+        // Check for and authorize from persistent cookie
         if (isset($_COOKIE["persistentlogin"]))
         {
             if (hash_equals($pwhash, $_COOKIE["persistentlogin"]))
             {
                 $auth = true;
                 // Refresh cookie with new expiry
-                setcookie('persistentlogin', $pwhash, time()+60*60*24*7);
+                // setcookie( $name, $value, $expire, $path, $domain, $secure, $httponly )
+                setcookie('persistentlogin', $pwhash, time()+60*60*24*7, null, null, null, true );
             }
             else
             {
@@ -61,15 +66,24 @@
             $postinput = hash('sha256',hash('sha256',$_POST["pw"]));
             if(hash_equals($pwhash, $postinput))
             {
+                // Regenerate session ID to prevent session fixation
+                session_regenerate_id();
+
+                // Clear the old session
+                $_SESSION = array();
+
+                // Set hash in new session
                 $_SESSION["hash"] = $pwhash;
+
+                // Set persistent cookie if selected
+                if (isset($_POST['persistentlogin']))
+                {
+                    // setcookie( $name, $value, $expire, $path, $domain, $secure, $httponly )
+                    setcookie('persistentlogin', $pwhash, time()+60*60*24*7, null, null, null, true );
+                }
 
                 // Login successful, redirect the user to the homepage to discard the POST request
                 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $_SERVER['QUERY_STRING'] === 'login') {
-                    // Set persistent cookie if selected
-                    if (isset($_POST['persistentlogin']))
-                    {
-                        setcookie('persistentlogin', $pwhash, time()+60*60*24*7);
-                    }
                     header('Location: index.php');
                     exit();
                 }
